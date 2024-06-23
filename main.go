@@ -24,32 +24,31 @@ var (
 )
 
 func init() {
-	// ファイルオープンなどで io.Reader を得る
 	f, err := os.Open("KiwiMaru-Regular.ttf")
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	defer f.Close()
 
-	// フォントを読み込む
 	src, err := text.NewGoTextFaceSource(f)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	// フォントフェイスを作る
 	fontFace = &text.GoTextFace{Source: src, Size: 24}
 }
 
 type Robot struct {
-	Name      string
-	HP        int
-	Attack    int
-	Defense   int
-	Speed     int
-	Weapon    string
-	Armor     string
-	Accessory string
+	Name         string
+	HP           int
+	Attack       int
+	Defense      int
+	Speed        int
+	CriticalRate float64 // クリティカル率 (0.0 - 1.0)
+	EvasionRate  float64 // 回避率 (0.0 - 1.0)
+	Weapon       string
+	Armor        string
+	Accessory    string
 }
 
 func (r *Robot) EquipWeapon(weapon string) {
@@ -102,8 +101,8 @@ type Game struct {
 func NewGame() *Game {
 	src := rand.NewSource(time.Now().UnixNano())
 	rng := rand.New(src)
-	player := Robot{Name: "PlayerBot", HP: 100, Attack: 20, Defense: 10, Speed: 5}
-	enemy := Robot{Name: "EnemyBot", HP: 100, Attack: 18, Defense: 8, Speed: 4}
+	player := Robot{Name: "PlayerBot", HP: 100, Attack: 20, Defense: 10, Speed: 5, CriticalRate: 0.1, EvasionRate: 0.1}
+	enemy := Robot{Name: "EnemyBot", HP: 100, Attack: 18, Defense: 8, Speed: 4, CriticalRate: 0.05, EvasionRate: 0.05}
 
 	enemy.EquipWeapon("Gun")
 	enemy.EquipArmor("Armor")
@@ -156,25 +155,25 @@ func (g *Game) Update() error {
 			g.lastAttackTime = time.Now()
 			if g.player.HP > 0 && g.enemy.HP > 0 {
 				if g.player.Speed >= g.enemy.Speed {
-					g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.AttackEnemy(&g.enemy)))
+					g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.AttackEnemy(&g.enemy, g.rng)))
 					if len(g.messages) > maxMessages {
-						g.messages = g.messages[1:] // 古いメッセージを削除
+						g.messages = g.messages[1:]
 					}
 					if g.enemy.HP > 0 {
-						g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.enemy.AttackEnemy(&g.player)))
+						g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.enemy.AttackEnemy(&g.player, g.rng)))
 						if len(g.messages) > maxMessages {
-							g.messages = g.messages[1:] // 古いメッセージを削除
+							g.messages = g.messages[1:]
 						}
 					}
 				} else {
-					g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.enemy.AttackEnemy(&g.player)))
+					g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.enemy.AttackEnemy(&g.player, g.rng)))
 					if len(g.messages) > maxMessages {
-						g.messages = g.messages[1:] // 古いメッセージを削除
+						g.messages = g.messages[1:]
 					}
 					if g.player.HP > 0 {
-						g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.AttackEnemy(&g.enemy)))
+						g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.AttackEnemy(&g.enemy, g.rng)))
 						if len(g.messages) > maxMessages {
-							g.messages = g.messages[1:] // 古いメッセージを削除
+							g.messages = g.messages[1:]
 						}
 					}
 				}
@@ -192,13 +191,35 @@ func (g *Game) Update() error {
 	return nil
 }
 
-func (r *Robot) AttackEnemy(enemy *Robot) string {
-	damage := r.Attack - enemy.Defense
+func (r *Robot) AttackEnemy(enemy *Robot, rng *rand.Rand) string {
+	// 回避判定
+	if rng.Float64() < enemy.EvasionRate {
+		return fmt.Sprintf("%s attacks %s but misses!", r.Name, enemy.Name)
+	}
+
+	// クリティカルヒット判定
+	critical := 1.0
+	if rng.Float64() < r.CriticalRate {
+		critical = 2.0
+	}
+
+	// ランダムなダメージ修正 (-3 から +3)
+	randomDamage := rng.Intn(7) - 3
+
+	// ダメージ計算
+	damage := int(float64(r.Attack-enemy.Defense+randomDamage) * critical)
 	if damage < 0 {
 		damage = 0
 	}
 	enemy.HP -= damage
-	return fmt.Sprintf("%s attacks %s for %d damage", r.Name, enemy.Name, damage)
+
+	// クリティカルヒットかどうかのメッセージ
+	criticalMsg := ""
+	if critical > 1.0 {
+		criticalMsg = " It's a critical hit!"
+	}
+
+	return fmt.Sprintf("%s attacks %s for %d damage.%s", r.Name, enemy.Name, damage, criticalMsg)
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
