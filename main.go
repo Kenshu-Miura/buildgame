@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"log"
 	"math/rand"
 	"os"
@@ -11,12 +12,14 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 const (
 	screenWidth  = 1280
 	screenHeight = 720
-	maxMessages  = 5 // 表示するメッセージの最大数
+	maxMessages  = 5  // 表示するメッセージの最大数
+	lineHeight   = 26 // 行の高さを適切に設定（フォントサイズに応じて調整）
 )
 
 var (
@@ -223,13 +226,28 @@ func (r *Robot) AttackEnemy(enemy *Robot, rng *rand.Rand) string {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	op := &text.DrawOptions{}
-	op.GeoM.Translate(20, 40)
-	op.LineSpacing = 24 * 1.5
+	// 画面のサイズを取得
+	screenWidth, screenHeight := screen.Bounds().Dx(), screen.Bounds().Dy()
 
+	// メッセージウィンドウの位置とサイズを設定
+	windowX, windowY := 10, screenHeight/2+70
+	windowWidth, windowHeight := screenWidth-20, screenHeight/2-80 // 左右の余白を作成し、縦の長さを少し短くする
+
+	// メッセージウィンドウのイメージを作成
+	msgWindow := ebiten.NewImage(windowWidth, windowHeight-10) // 下に余白を作成
+	msgWindow.Fill(color.Black)                                // 背景を黒にする
+
+	// 白い枠を描画
+	vector.DrawFilledRect(msgWindow, 0, 0, float32(windowWidth), 2, color.White, false)                          // 上枠
+	vector.DrawFilledRect(msgWindow, 0, float32(windowHeight-12), float32(windowWidth), 2, color.White, false)   // 下枠
+	vector.DrawFilledRect(msgWindow, 0, 0, 2, float32(windowHeight-10), color.White, false)                      // 左枠
+	vector.DrawFilledRect(msgWindow, float32(windowWidth-2), 0, 2, float32(windowHeight-10), color.White, false) // 右枠
+
+	// メッセージを生成
+	msg := ""
 	if !g.battleStarted {
 		if g.selectionPhase < 3 {
-			msg := fmt.Sprintf("Select %s:\n", []string{"Weapon", "Armor", "Accessory"}[g.selectionPhase])
+			msg = fmt.Sprintf("Select %s:\n", []string{"Weapon", "Armor", "Accessory"}[g.selectionPhase])
 			for i, item := range g.equipment[g.selectionPhase] {
 				cursor := " "
 				if i == g.selected[g.selectionPhase] {
@@ -237,18 +255,64 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				}
 				msg += fmt.Sprintf("%s %s\n", cursor, item)
 			}
-			text.Draw(screen, msg, fontFace, op)
+			// メッセージを描画
+			lines := strings.Split(msg, "\n")
+			for i, line := range lines {
+				textOp := &text.DrawOptions{}
+				textOp.GeoM.Translate(10, 10+float64(i*lineHeight)) // 各行の表示位置を調整
+				text.Draw(msgWindow, line, fontFace, textOp)
+			}
 		} else {
-			status := fmt.Sprintf(
-				"Current Equipment:\nWeapon: %s\nArmor: %s\nAccessory: %s\n\nCurrent Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d\n\nPress Z to start the battle!",
+			// Current Equipment
+			leftColumn := fmt.Sprintf(
+				"Current Equipment:\nWeapon: %s\nArmor: %s\nAccessory: %s",
 				g.player.Weapon, g.player.Armor, g.player.Accessory,
+			)
+			// Current Status
+			rightColumn := fmt.Sprintf(
+				"Current Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d",
 				g.player.HP, g.player.Attack, g.player.Defense, g.player.Speed,
 			)
-			text.Draw(screen, status, fontFace, op)
+			// Press Z to start the battle!
+			centerMsg := "Press Z to start the battle!"
+
+			// 左カラムの表示位置
+			leftLines := strings.Split(leftColumn, "\n")
+			for i, line := range leftLines {
+				textOp := &text.DrawOptions{}
+				textOp.GeoM.Translate(10, 10+float64(i*lineHeight)) // 各行の表示位置を調整
+				text.Draw(msgWindow, line, fontFace, textOp)
+			}
+
+			// 右カラムの表示位置
+			rightLines := strings.Split(rightColumn, "\n")
+			for i, line := range rightLines {
+				textOp := &text.DrawOptions{}
+				textOp.GeoM.Translate(float64(windowWidth/2)+10, 10+float64(i*lineHeight)) // 各行の表示位置を調整
+				text.Draw(msgWindow, line, fontFace, textOp)
+			}
+
+			// 中央のメッセージの表示位置（メッセージウィンドウの上に表示）
+			centerMsgWidth, _ := text.Measure(centerMsg, fontFace, 1.0)
+			textOp := &text.DrawOptions{}
+			textOp.GeoM.Translate(float64((windowWidth-int(centerMsgWidth))/2), float64(screenHeight/3)) // メッセージウィンドウの上に表示するために調整
+			text.Draw(screen, centerMsg, fontFace, textOp)
 		}
 	} else {
-		text.Draw(screen, strings.Join(g.messages, "\n"), fontFace, op)
+		msg = strings.Join(g.messages, "\n")
+		// 文字を行ごとに描画
+		lines := strings.Split(msg, "\n")
+		for i, line := range lines {
+			textOp := &text.DrawOptions{}
+			textOp.GeoM.Translate(10, 10+float64(i*lineHeight)) // 各行の表示位置を調整
+			text.Draw(msgWindow, line, fontFace, textOp)
+		}
 	}
+
+	// 画面にメッセージウィンドウを描画
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(windowX), float64(windowY))
+	screen.DrawImage(msgWindow, op)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
