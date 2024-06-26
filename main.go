@@ -128,70 +128,82 @@ func NewGame() *Game {
 	}
 }
 
-func (g *Game) Update() error {
-	if !g.battleStarted {
-		if g.selectionPhase < 3 {
-			if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
-				g.selected[g.selectionPhase] = (g.selected[g.selectionPhase] - 1 + len(g.equipment[g.selectionPhase])) % len(g.equipment[g.selectionPhase])
-			}
-			if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
-				g.selected[g.selectionPhase] = (g.selected[g.selectionPhase] + 1) % len(g.equipment[g.selectionPhase])
-			}
-			if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
-				switch g.selectionPhase {
-				case 0:
-					g.player.EquipWeapon(g.equipment[0][g.selected[0]])
-				case 1:
-					g.player.EquipArmor(g.equipment[1][g.selected[1]])
-				case 2:
-					g.player.EquipAccessory(g.equipment[2][g.selected[2]])
-				}
-				g.selectionPhase++
-			}
-		} else {
-			if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
-				g.battleStarted = true
-				g.lastAttackTime = time.Now()
-				g.messages = append(g.messages, "Battle Start!")
-			}
+func (g *Game) handleSelectionPhase() {
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+		g.selected[g.selectionPhase] = (g.selected[g.selectionPhase] - 1 + len(g.equipment[g.selectionPhase])) % len(g.equipment[g.selectionPhase])
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+		g.selected[g.selectionPhase] = (g.selected[g.selectionPhase] + 1) % len(g.equipment[g.selectionPhase])
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
+		switch g.selectionPhase {
+		case 0:
+			g.player.EquipWeapon(g.equipment[0][g.selected[0]])
+		case 1:
+			g.player.EquipArmor(g.equipment[1][g.selected[1]])
+		case 2:
+			g.player.EquipAccessory(g.equipment[2][g.selected[2]])
 		}
-	} else if !g.battleEnded {
-		if time.Since(g.lastAttackTime) >= time.Second {
-			g.lastAttackTime = time.Now()
-			if g.player.HP > 0 && g.enemy.HP > 0 {
-				if g.player.Speed >= g.enemy.Speed {
-					g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.AttackEnemy(&g.enemy, g.rng)))
-					if len(g.messages) > maxMessages {
-						g.messages = g.messages[1:]
-					}
-					if g.enemy.HP > 0 {
-						g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.enemy.AttackEnemy(&g.player, g.rng)))
-						if len(g.messages) > maxMessages {
-							g.messages = g.messages[1:]
-						}
-					}
-				} else {
+		g.selectionPhase++
+	}
+}
+
+func (g *Game) handleBattleStart() {
+	if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
+		g.battleStarted = true
+		g.lastAttackTime = time.Now()
+		g.messages = append(g.messages, "Battle Start!")
+	}
+}
+
+func (g *Game) handleBattlePhase() {
+	if time.Since(g.lastAttackTime) >= time.Second {
+		g.lastAttackTime = time.Now()
+		if g.player.HP > 0 && g.enemy.HP > 0 {
+			if g.player.Speed >= g.enemy.Speed {
+				g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.AttackEnemy(&g.enemy, g.rng)))
+				if len(g.messages) > maxMessages {
+					g.messages = g.messages[1:]
+				}
+				if g.enemy.HP > 0 {
 					g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.enemy.AttackEnemy(&g.player, g.rng)))
 					if len(g.messages) > maxMessages {
 						g.messages = g.messages[1:]
 					}
-					if g.player.HP > 0 {
-						g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.AttackEnemy(&g.enemy, g.rng)))
-						if len(g.messages) > maxMessages {
-							g.messages = g.messages[1:]
-						}
+				}
+			} else {
+				g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.enemy.AttackEnemy(&g.player, g.rng)))
+				if len(g.messages) > maxMessages {
+					g.messages = g.messages[1:]
+				}
+				if g.player.HP > 0 {
+					g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.AttackEnemy(&g.enemy, g.rng)))
+					if len(g.messages) > maxMessages {
+						g.messages = g.messages[1:]
 					}
 				}
-				g.turn++
-			} else {
-				if g.player.HP <= 0 {
-					g.messages = append(g.messages, "Player's robot is defeated!")
-				} else if g.enemy.HP <= 0 {
-					g.messages = append(g.messages, "Enemy's robot is defeated!")
-				}
-				g.battleEnded = true
 			}
+			g.turn++
+		} else {
+			if g.player.HP <= 0 {
+				g.messages = append(g.messages, "Player's robot is defeated!")
+			} else if g.enemy.HP <= 0 {
+				g.messages = append(g.messages, "Enemy's robot is defeated!")
+			}
+			g.battleEnded = true
 		}
+	}
+}
+
+func (g *Game) Update() error {
+	if !g.battleStarted {
+		if g.selectionPhase < 3 {
+			g.handleSelectionPhase()
+		} else {
+			g.handleBattleStart()
+		}
+	} else if !g.battleEnded {
+		g.handleBattlePhase()
 	}
 	return nil
 }
