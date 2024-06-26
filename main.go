@@ -317,6 +317,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				centerMsg = "You lose!"
 			}
 			drawCenterText(screen, centerMsg, fontFace, windowWidth, windowHeight)
+			drawMessages(msgWindow, "Press Z to reset the game.")
+			// Z キーでゲームをリセット
+			if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
+				*g = *NewGame()
+			}
 		} else {
 			if g.turn == 1 {
 				drawCenterText(screen, "Battle Start!", fontFace, windowWidth, windowHeight)
