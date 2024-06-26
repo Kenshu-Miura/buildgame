@@ -99,6 +99,7 @@ type Game struct {
 	lastAttackTime time.Time
 	rng            *rand.Rand
 	turn           int
+	reslt          bool
 }
 
 func NewGame() *Game {
@@ -152,7 +153,6 @@ func (g *Game) handleBattleStart() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
 		g.battleStarted = true
 		g.lastAttackTime = time.Now()
-		g.messages = append(g.messages, "Battle Start!")
 	}
 }
 
@@ -186,9 +186,9 @@ func (g *Game) handleBattlePhase() {
 			g.turn++
 		} else {
 			if g.player.HP <= 0 {
-				g.messages = append(g.messages, "Player's robot is defeated!")
+				g.reslt = false
 			} else if g.enemy.HP <= 0 {
-				g.messages = append(g.messages, "Enemy's robot is defeated!")
+				g.reslt = true
 			}
 			g.battleEnded = true
 		}
@@ -239,16 +239,23 @@ func (r *Robot) AttackEnemy(enemy *Robot, rng *rand.Rand) string {
 	return fmt.Sprintf("%s attacks %s for %d damage.%s", r.Name, enemy.Name, damage, criticalMsg)
 }
 
-func drawMessages(msgWindow *ebiten.Image, msg string) {
+func drawText(msgWindow *ebiten.Image, msg string, x, y float64) {
 	lines := strings.Split(msg, "\n")
 	for i, line := range lines {
 		textOp := &text.DrawOptions{}
-		textOp.GeoM.Translate(10, 10+float64(i*lineHeight)) // 各行の表示位置を調整
+		textOp.GeoM.Translate(x, y+float64(i*lineHeight)) // 各行の表示位置を調整
 		text.Draw(msgWindow, line, fontFace, textOp)
 	}
 }
 
-func drawBattleStatus(g *Game, msgWindow *ebiten.Image, screen *ebiten.Image, windowWidth, windowHeight int) {
+func drawCenterText(screen *ebiten.Image, msg string, fontFace *text.GoTextFace, windowWidth, windowHeight int) {
+	centerMsgWidth, _ := text.Measure(msg, fontFace, 1.0)
+	textOp := &text.DrawOptions{}
+	textOp.GeoM.Translate(float64((windowWidth-int(centerMsgWidth))/2), (float64(windowHeight) / 1.25)) // 中央のメッセージの表示位置
+	text.Draw(screen, msg, fontFace, textOp)
+}
+
+func drawBattleStatus(g *Game, msgWindow *ebiten.Image, screen *ebiten.Image, windowWidth, windowHeight int, centerMsg string) {
 	leftColumn := fmt.Sprintf(
 		"Current Equipment:\nWeapon: %s\nArmor: %s\nAccessory: %s",
 		g.player.Weapon, g.player.Armor, g.player.Accessory,
@@ -257,29 +264,24 @@ func drawBattleStatus(g *Game, msgWindow *ebiten.Image, screen *ebiten.Image, wi
 		"Current Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d",
 		g.player.HP, g.player.Attack, g.player.Defense, g.player.Speed,
 	)
-	centerMsg := "Press Z to start the battle!"
 
-	// 左カラムの表示位置
-	leftLines := strings.Split(leftColumn, "\n")
-	for i, line := range leftLines {
+	// 左カラムの表示
+	drawText(msgWindow, leftColumn, 10, 10)
+
+	// 右カラムの表示
+	drawText(msgWindow, rightColumn, float64(windowWidth/2)+10, 10)
+
+	// 中央メッセージの表示
+	drawCenterText(screen, centerMsg, fontFace, windowWidth, windowHeight)
+}
+
+func drawMessages(msgWindow *ebiten.Image, msg string) {
+	lines := strings.Split(msg, "\n")
+	for i, line := range lines {
 		textOp := &text.DrawOptions{}
 		textOp.GeoM.Translate(10, 10+float64(i*lineHeight)) // 各行の表示位置を調整
 		text.Draw(msgWindow, line, fontFace, textOp)
 	}
-
-	// 右カラムの表示位置
-	rightLines := strings.Split(rightColumn, "\n")
-	for i, line := range rightLines {
-		textOp := &text.DrawOptions{}
-		textOp.GeoM.Translate(float64(windowWidth/2)+10, 10+float64(i*lineHeight)) // 各行の表示位置を調整
-		text.Draw(msgWindow, line, fontFace, textOp)
-	}
-
-	// 中央のメッセージの表示位置（メッセージウィンドウの上に表示）
-	centerMsgWidth, _ := text.Measure(centerMsg, fontFace, 1.0)
-	textOp := &text.DrawOptions{}
-	textOp.GeoM.Translate(float64((windowWidth-int(centerMsgWidth))/2), (float64(windowHeight) / 1.25)) // メッセージウィンドウの上に表示するために調整
-	text.Draw(screen, centerMsg, fontFace, textOp)
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -304,13 +306,24 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				}
 				msg += fmt.Sprintf("%s %s\n", cursor, item)
 			}
-			drawMessages(msgWindow, msg)
+			drawMessages(msgWindow, msg) // 左カラムとして表示
 		} else {
-			drawBattleStatus(g, msgWindow, screen, windowWidth, windowHeight)
+			drawBattleStatus(g, msgWindow, screen, windowWidth, windowHeight, "Press Z to start the battle!")
 		}
 	} else {
-		msg := strings.Join(g.messages, "\n")
-		drawMessages(msgWindow, msg)
+		if g.battleEnded {
+			centerMsg := "You win!"
+			if !g.reslt {
+				centerMsg = "You lose!"
+			}
+			drawCenterText(screen, centerMsg, fontFace, windowWidth, windowHeight)
+		} else {
+			if g.turn == 1 {
+				drawCenterText(screen, "Battle Start!", fontFace, windowWidth, windowHeight)
+			}
+			msg := strings.Join(g.messages, "\n")
+			drawMessages(msgWindow, msg) // 左カラムとして表示
+		}
 	}
 
 	op := &ebiten.DrawImageOptions{}
