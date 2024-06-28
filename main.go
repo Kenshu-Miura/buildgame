@@ -101,6 +101,39 @@ func (r *Robot) EquipAccessory(accessory string) {
 	}
 }
 
+func getEquipmentDetails(equipmentType, item string) string {
+	switch equipmentType {
+	case "Weapon":
+		switch item {
+		case "Sword":
+			return "Sword: Attack +10, Hit Rate +10%"
+		case "Gun":
+			return "Gun: Attack +15, Speed -2, Hit Rate +5%"
+		case "Laser":
+			return "Laser: Attack +20, Critical Rate +5%, Hit Rate +15%"
+		}
+	case "Armor":
+		switch item {
+		case "Shield":
+			return "Shield: Defense +10"
+		case "Armor":
+			return "Armor: Defense +15, Speed -3"
+		case "Nano Suit":
+			return "Nano Suit: Defense +20, Evasion Rate +5%"
+		}
+	case "Accessory":
+		switch item {
+		case "Boots":
+			return "Boots: Speed +5"
+		case "Helmet":
+			return "Helmet: Defense +5, Speed -1"
+		case "Gloves":
+			return "Gloves: Critical Rate +5%, Attack +5"
+		}
+	}
+	return "No details available."
+}
+
 type Game struct {
 	player         Robot
 	enemy          Robot
@@ -336,6 +369,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 			drawMessages(msgWindow, msg) // 左カラムとして表示
 			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
+
+			// 右ウィンドウに選択中の装備の詳細を表示
+			equipmentType := []string{"Weapon", "Armor", "Accessory"}[g.selectionPhase]
+			selectedItem := g.equipment[g.selectionPhase][g.selected[g.selectionPhase]]
+			details := getEquipmentDetails(equipmentType, selectedItem)
+			drawText(rightWindow, details, 10, 10)
 		} else {
 			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
 			drawBattleStatus(g, msgWindow, rightWindow, windowWidth, windowHeight, "Press Z to start the battle!")
