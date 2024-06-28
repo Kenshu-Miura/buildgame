@@ -81,7 +81,7 @@ func (r *Robot) EquipArmor(armor string) {
 	case "Armor":
 		r.Defense += 15
 		r.Speed -= 3
-	case "Nano Suit":
+	case "NanoSuit":
 		r.Defense += 20
 		r.EvasionRate += 0.05
 	}
@@ -118,8 +118,8 @@ func getEquipmentDetails(equipmentType, item string) string {
 			return "Shield: Defense +10"
 		case "Armor":
 			return "Armor: Defense +15, Speed -3"
-		case "Nano Suit":
-			return "Nano Suit: Defense +20, Evasion Rate +5%"
+		case "NanoSuit":
+			return "NanoSuit: Defense +20, Evasion Rate +5%"
 		}
 	case "Accessory":
 		switch item {
@@ -132,6 +132,10 @@ func getEquipmentDetails(equipmentType, item string) string {
 		}
 	}
 	return "No details available."
+}
+
+func getEquipmentImageFilename(equipmentType, item string) string {
+	return fmt.Sprintf("images/%s_%s.jpg", equipmentType, item)
 }
 
 type Game struct {
@@ -164,7 +168,7 @@ func NewGame() *Game {
 		enemy:  enemy,
 		equipment: [][]string{
 			{"Sword", "Gun", "Laser"},
-			{"Shield", "Armor", "Nano Suit"},
+			{"Shield", "Armor", "NanoSuit"},
 			{"Boots", "Helmet", "Gloves"},
 		},
 		selected:       [3]int{0, 0, 0},
@@ -300,7 +304,7 @@ func drawText(msgWindow *ebiten.Image, msg string, x, y float64) {
 	}
 }
 
-func drawBattleStatus(g *Game, msgWindow *ebiten.Image, screen *ebiten.Image, windowWidth, windowHeight int, startMsg string) {
+func drawBattleStatus(g *Game, msgWindow *ebiten.Image, screen *ebiten.Image, startMsg string) {
 	leftColumn := fmt.Sprintf(
 		"Current Equipment:\nWeapon: %s\nArmor: %s\nAccessory: %s",
 		g.player.Weapon, g.player.Armor, g.player.Accessory,
@@ -311,15 +315,6 @@ func drawBattleStatus(g *Game, msgWindow *ebiten.Image, screen *ebiten.Image, wi
 
 	// 中央メッセージの表示
 	drawText(screen, startMsg, 10, 10)
-}
-
-func drawMessages(msgWindow *ebiten.Image, msg string) {
-	lines := strings.Split(msg, "\n")
-	for i, line := range lines {
-		textOp := &text.DrawOptions{}
-		textOp.GeoM.Translate(10, 10+float64(i*lineHeight)) // 各行の表示位置を調整
-		text.Draw(msgWindow, line, fontFace, textOp)
-	}
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -367,17 +362,29 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				}
 				msg += fmt.Sprintf("%s %s\n", cursor, item)
 			}
-			drawMessages(msgWindow, msg) // 左カラムとして表示
-			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
+			drawText(msgWindow, msg, 10, 10)
 
 			// 右ウィンドウに選択中の装備の詳細を表示
 			equipmentType := []string{"Weapon", "Armor", "Accessory"}[g.selectionPhase]
 			selectedItem := g.equipment[g.selectionPhase][g.selected[g.selectionPhase]]
 			details := getEquipmentDetails(equipmentType, selectedItem)
 			drawText(rightWindow, details, 10, 10)
+
+			// 左ウィンドウに選択中の装備の画像を表示
+			imageFilename := getEquipmentImageFilename(equipmentType, selectedItem)
+			image, _, err := ebitenutil.NewImageFromFile(imageFilename)
+			if err == nil {
+				op := &ebiten.DrawImageOptions{}
+				scaleX := float64(screenWidth/3-20) / float64(image.Bounds().Dx())
+				scaleY := float64(screenHeight/2+20) / float64(image.Bounds().Dy())
+				op.GeoM.Scale(scaleX, scaleY)
+				op.GeoM.Translate(10, 10) // 枠と画像の間に10ピクセルの隙間を設定
+				leftWindow.DrawImage(image, op)
+			}
+			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
 		} else {
 			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
-			drawBattleStatus(g, msgWindow, rightWindow, windowWidth, windowHeight, "Press Z to start the battle!")
+			drawBattleStatus(g, msgWindow, rightWindow, "Press Z to start the battle!")
 		}
 	} else {
 		if g.battleEnded {
@@ -386,7 +393,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				rightMsg = "You lose!"
 			}
 			drawText(rightWindow, rightMsg, 10, 10)
-			drawMessages(msgWindow, "Press Z to reset the game.")
+			drawText(msgWindow, "Press Z to reset the game.", 10, 10)
 			// Z キーでゲームをリセット
 			if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
 				*g = *NewGame()
@@ -396,7 +403,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				drawText(rightWindow, "Battle Start!", 10, 10)
 			}
 			msg := strings.Join(g.messages, "\n")
-			drawMessages(rightWindow, msg)
+			drawText(rightWindow, msg, 10, 10)
 			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
 		}
 	}
@@ -404,18 +411,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(windowX), float64(windowY))
 	screen.DrawImage(msgWindow, op)
-
-	// 左ウィンドウに画像を表示
-	image, _, err := ebitenutil.NewImageFromFile("image/test.jpg")
-	if err == nil {
-		op := &ebiten.DrawImageOptions{}
-		// 画像を表示する位置とスケールを調整
-		scaleX := float64(screenWidth/3-20) / float64(image.Bounds().Dx())
-		scaleY := float64(screenHeight/2+20) / float64(image.Bounds().Dy())
-		op.GeoM.Scale(scaleX, scaleY)
-		op.GeoM.Translate(10, 10) // 枠と画像の間に10ピクセルの隙間を設定
-		leftWindow.DrawImage(image, op)
-	}
 
 	opLeft := &ebiten.DrawImageOptions{}
 	opLeft.GeoM.Translate(10, 10)
