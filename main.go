@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -18,7 +19,7 @@ import (
 const (
 	screenWidth  = 1280
 	screenHeight = 720
-	maxMessages  = 5  // 表示するメッセージの最大数
+	maxMessages  = 12 // 表示するメッセージの最大数
 	lineHeight   = 26 // 行の高さを適切に設定（フォントサイズに応じて調整）
 )
 
@@ -233,7 +234,7 @@ func (r *Robot) AttackEnemy(enemy *Robot, rng *rand.Rand) string {
 	// クリティカルヒットかどうかのメッセージ
 	criticalMsg := ""
 	if critical > 1.0 {
-		criticalMsg = " It's a critical hit!"
+		criticalMsg = "\nIt's a critical hit!"
 	}
 
 	return fmt.Sprintf("%s attacks %s for %d damage.%s", r.Name, enemy.Name, damage, criticalMsg)
@@ -248,14 +249,7 @@ func drawText(msgWindow *ebiten.Image, msg string, x, y float64) {
 	}
 }
 
-func drawCenterText(screen *ebiten.Image, msg string, fontFace *text.GoTextFace, windowWidth, windowHeight int) {
-	centerMsgWidth, _ := text.Measure(msg, fontFace, 1.0)
-	textOp := &text.DrawOptions{}
-	textOp.GeoM.Translate(float64((windowWidth-int(centerMsgWidth))/2), (float64(windowHeight) / 1.25)) // 中央のメッセージの表示位置
-	text.Draw(screen, msg, fontFace, textOp)
-}
-
-func drawBattleStatus(g *Game, msgWindow *ebiten.Image, screen *ebiten.Image, windowWidth, windowHeight int, centerMsg string) {
+func drawBattleStatus(g *Game, msgWindow *ebiten.Image, screen *ebiten.Image, windowWidth, windowHeight int, startMsg string) {
 	leftColumn := fmt.Sprintf(
 		"Current Equipment:\nWeapon: %s\nArmor: %s\nAccessory: %s",
 		g.player.Weapon, g.player.Armor, g.player.Accessory,
@@ -272,7 +266,7 @@ func drawBattleStatus(g *Game, msgWindow *ebiten.Image, screen *ebiten.Image, wi
 	drawText(msgWindow, rightColumn, float64(windowWidth/2)+10, 10)
 
 	// 中央メッセージの表示
-	drawCenterText(screen, centerMsg, fontFace, windowWidth, windowHeight)
+	drawText(screen, startMsg, 10, 10)
 }
 
 func drawMessages(msgWindow *ebiten.Image, msg string) {
@@ -296,6 +290,24 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	vector.DrawFilledRect(msgWindow, 0, 0, 2, float32(windowHeight-10), color.White, false)
 	vector.DrawFilledRect(msgWindow, float32(windowWidth-2), 0, 2, float32(windowHeight-10), color.White, false)
 
+	// 追加: 上部に2つのウィンドウを追加
+	leftWindow := ebiten.NewImage(screenWidth/3, screenHeight/2+40)
+	rightWindow := ebiten.NewImage(screenWidth/2+170, screenHeight/2+40)
+	leftWindow.Fill(color.RGBA{0, 0, 0, 255})
+	rightWindow.Fill(color.RGBA{0, 0, 0, 255})
+
+	// 左ウィンドウの枠を描画
+	vector.DrawFilledRect(leftWindow, 0, 0, float32(screenWidth/3), 2, color.White, false)
+	vector.DrawFilledRect(leftWindow, 0, float32(screenHeight/2+40-2), float32(screenWidth/3), 2, color.White, false)
+	vector.DrawFilledRect(leftWindow, 0, 0, 2, float32(screenHeight/2+40), color.White, false)
+	vector.DrawFilledRect(leftWindow, float32(screenWidth/3-2), 0, 2, float32(screenHeight/2+40), color.White, false)
+
+	// 右ウィンドウの枠を描画
+	vector.DrawFilledRect(rightWindow, 0, 0, float32(screenWidth/2+170), 2, color.White, false)
+	vector.DrawFilledRect(rightWindow, 0, float32(screenHeight/2+40-2), float32(screenWidth/2+170), 2, color.White, false)
+	vector.DrawFilledRect(rightWindow, 0, 0, 2, float32(screenHeight/2+40), color.White, false)
+	vector.DrawFilledRect(rightWindow, float32(screenWidth/2+170-2), 0, 2, float32(screenHeight/2+40), color.White, false)
+
 	if !g.battleStarted {
 		if g.selectionPhase < 3 {
 			msg := fmt.Sprintf("Select %s:\n", []string{"Weapon", "Armor", "Accessory"}[g.selectionPhase])
@@ -307,16 +319,21 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				msg += fmt.Sprintf("%s %s\n", cursor, item)
 			}
 			drawMessages(msgWindow, msg) // 左カラムとして表示
+			status := fmt.Sprintf(
+				"Current Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d",
+				g.player.HP, g.player.Attack, g.player.Defense, g.player.Speed,
+			)
+			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
 		} else {
-			drawBattleStatus(g, msgWindow, screen, windowWidth, windowHeight, "Press Z to start the battle!")
+			drawBattleStatus(g, msgWindow, rightWindow, windowWidth, windowHeight, "Press Z to start the battle!")
 		}
 	} else {
 		if g.battleEnded {
-			centerMsg := "You win!"
+			rightMsg := "You win!"
 			if !g.reslt {
-				centerMsg = "You lose!"
+				rightMsg = "You lose!"
 			}
-			drawCenterText(screen, centerMsg, fontFace, windowWidth, windowHeight)
+			drawText(rightWindow, rightMsg, 10, 10)
 			drawMessages(msgWindow, "Press Z to reset the game.")
 			// Z キーでゲームをリセット
 			if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
@@ -324,16 +341,41 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 		} else {
 			if g.turn == 1 {
-				drawCenterText(screen, "Battle Start!", fontFace, windowWidth, windowHeight)
+				drawText(rightWindow, "Battle Start!", 10, 10)
 			}
 			msg := strings.Join(g.messages, "\n")
-			drawMessages(msgWindow, msg) // 左カラムとして表示
+			drawMessages(rightWindow, msg)
+			status := fmt.Sprintf(
+				"Current Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d",
+				g.player.HP, g.player.Attack, g.player.Defense, g.player.Speed,
+			)
+			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
 		}
 	}
 
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(windowX), float64(windowY))
 	screen.DrawImage(msgWindow, op)
+
+	// 左ウィンドウに画像を表示
+	image, _, err := ebitenutil.NewImageFromFile("image/test.jpg")
+	if err == nil {
+		op := &ebiten.DrawImageOptions{}
+		// 画像を表示する位置とスケールを調整
+		scaleX := float64(screenWidth/3-20) / float64(image.Bounds().Dx())
+		scaleY := float64(screenHeight/2+20) / float64(image.Bounds().Dy())
+		op.GeoM.Scale(scaleX, scaleY)
+		op.GeoM.Translate(10, 10) // 枠と画像の間に10ピクセルの隙間を設定
+		leftWindow.DrawImage(image, op)
+	}
+
+	opLeft := &ebiten.DrawImageOptions{}
+	opLeft.GeoM.Translate(10, 10)
+	screen.DrawImage(leftWindow, opLeft)
+
+	opRight := &ebiten.DrawImageOptions{}
+	opRight.GeoM.Translate(float64(screenWidth)/2-180, 10)
+	screen.DrawImage(rightWindow, opRight)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
