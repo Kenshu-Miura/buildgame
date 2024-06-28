@@ -50,6 +50,7 @@ type Robot struct {
 	Speed        int
 	CriticalRate float64 // クリティカル率 (0.0 - 1.0)
 	EvasionRate  float64 // 回避率 (0.0 - 1.0)
+	HitRate      float64 // 命中率 (0.0 - 1.0)
 	Weapon       string
 	Armor        string
 	Accessory    string
@@ -60,9 +61,15 @@ func (r *Robot) EquipWeapon(weapon string) {
 	switch weapon {
 	case "Sword":
 		r.Attack += 10
+		r.HitRate += 0.1
 	case "Gun":
 		r.Attack += 15
 		r.Speed -= 2
+		r.HitRate += 0.05
+	case "Laser":
+		r.Attack += 20
+		r.CriticalRate += 0.05
+		r.HitRate += 0.15
 	}
 }
 
@@ -74,6 +81,9 @@ func (r *Robot) EquipArmor(armor string) {
 	case "Armor":
 		r.Defense += 15
 		r.Speed -= 3
+	case "Nano Suit":
+		r.Defense += 20
+		r.EvasionRate += 0.05
 	}
 }
 
@@ -85,6 +95,9 @@ func (r *Robot) EquipAccessory(accessory string) {
 	case "Helmet":
 		r.Defense += 5
 		r.Speed -= 1
+	case "Gloves":
+		r.CriticalRate += 0.05
+		r.Attack += 5
 	}
 }
 
@@ -106,8 +119,8 @@ type Game struct {
 func NewGame() *Game {
 	src := rand.NewSource(time.Now().UnixNano())
 	rng := rand.New(src)
-	player := Robot{Name: "PlayerBot", HP: 100, Attack: 20, Defense: 10, Speed: 5, CriticalRate: 0.1, EvasionRate: 0.1}
-	enemy := Robot{Name: "EnemyBot", HP: 100, Attack: 18, Defense: 8, Speed: 4, CriticalRate: 0.05, EvasionRate: 0.05}
+	player := Robot{Name: "PlayerBot", HP: 100, Attack: 20, Defense: 10, Speed: 5, CriticalRate: 0.1, EvasionRate: 0.1, HitRate: 0.8}
+	enemy := Robot{Name: "EnemyBot", HP: 100, Attack: 18, Defense: 8, Speed: 4, CriticalRate: 0.05, EvasionRate: 0.05, HitRate: 0.75}
 
 	enemy.EquipWeapon("Gun")
 	enemy.EquipArmor("Armor")
@@ -117,9 +130,9 @@ func NewGame() *Game {
 		player: player,
 		enemy:  enemy,
 		equipment: [][]string{
-			{"Sword", "Gun"},
-			{"Shield", "Armor"},
-			{"Boots", "Helmet"},
+			{"Sword", "Gun", "Laser"},
+			{"Shield", "Armor", "Nano Suit"},
+			{"Boots", "Helmet", "Gloves"},
 		},
 		selected:       [3]int{0, 0, 0},
 		selectionPhase: 0,
@@ -210,6 +223,11 @@ func (g *Game) Update() error {
 }
 
 func (r *Robot) AttackEnemy(enemy *Robot, rng *rand.Rand) string {
+	// 命中判定
+	if rng.Float64() > r.HitRate {
+		return fmt.Sprintf("%s attacks %s but misses!", r.Name, enemy.Name)
+	}
+
 	// 回避判定
 	if rng.Float64() < enemy.EvasionRate {
 		return fmt.Sprintf("%s attacks %s but misses!", r.Name, enemy.Name)
@@ -254,16 +272,9 @@ func drawBattleStatus(g *Game, msgWindow *ebiten.Image, screen *ebiten.Image, wi
 		"Current Equipment:\nWeapon: %s\nArmor: %s\nAccessory: %s",
 		g.player.Weapon, g.player.Armor, g.player.Accessory,
 	)
-	rightColumn := fmt.Sprintf(
-		"Current Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d",
-		g.player.HP, g.player.Attack, g.player.Defense, g.player.Speed,
-	)
 
 	// 左カラムの表示
 	drawText(msgWindow, leftColumn, 10, 10)
-
-	// 右カラムの表示
-	drawText(msgWindow, rightColumn, float64(windowWidth/2)+10, 10)
 
 	// 中央メッセージの表示
 	drawText(screen, startMsg, 10, 10)
@@ -308,6 +319,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	vector.DrawFilledRect(rightWindow, 0, 0, 2, float32(screenHeight/2+40), color.White, false)
 	vector.DrawFilledRect(rightWindow, float32(screenWidth/2+170-2), 0, 2, float32(screenHeight/2+40), color.White, false)
 
+	status := fmt.Sprintf(
+		"Current Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d\nCritical Rate: %.2f\nEvasion Rate: %.2f\nHit Rate: %.2f",
+		g.player.HP, g.player.Attack, g.player.Defense, g.player.Speed, g.player.CriticalRate, g.player.EvasionRate, g.player.HitRate,
+	)
+
 	if !g.battleStarted {
 		if g.selectionPhase < 3 {
 			msg := fmt.Sprintf("Select %s:\n", []string{"Weapon", "Armor", "Accessory"}[g.selectionPhase])
@@ -319,12 +335,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				msg += fmt.Sprintf("%s %s\n", cursor, item)
 			}
 			drawMessages(msgWindow, msg) // 左カラムとして表示
-			status := fmt.Sprintf(
-				"Current Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d",
-				g.player.HP, g.player.Attack, g.player.Defense, g.player.Speed,
-			)
 			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
 		} else {
+			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
 			drawBattleStatus(g, msgWindow, rightWindow, windowWidth, windowHeight, "Press Z to start the battle!")
 		}
 	} else {
@@ -345,10 +358,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 			msg := strings.Join(g.messages, "\n")
 			drawMessages(rightWindow, msg)
-			status := fmt.Sprintf(
-				"Current Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d",
-				g.player.HP, g.player.Attack, g.player.Defense, g.player.Speed,
-			)
 			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
 		}
 	}
