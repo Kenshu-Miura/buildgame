@@ -225,15 +225,15 @@ func (g *Game) handleBattleStart() {
 }
 
 func (g *Game) handleBattlePhase() {
-	if g.battleEnded {
-		return
-	}
-
 	if g.currentMessageIndex < len(g.messages) {
 		if time.Since(g.messageDisplayTime) >= 500*time.Millisecond {
 			g.currentMessageIndex++
 			g.messageDisplayTime = time.Now()
 		}
+		return
+	}
+
+	if g.battleEnded {
 		return
 	}
 
@@ -260,15 +260,19 @@ func (g *Game) handleBattlePhase() {
 
 		if g.enemy.HP > 0 {
 			g.messages = append(g.messages, g.enemy.AttackEnemy(&g.player, g.rng)...)
+		} else {
+			g.messages = append(g.messages, fmt.Sprintf("%s has defeated %s!", g.player.Name, g.enemy.Name))
 		}
 
 		if g.player.HP <= 0 {
+			g.messages = append(g.messages, fmt.Sprintf("%s has been defeated!", g.player.Name))
+			g.battleEnded = true
 			g.reslt = false
-			g.battleEnded = true
 		} else if g.enemy.HP <= 0 {
-			g.reslt = true
 			g.battleEnded = true
+			g.reslt = true
 		}
+
 		g.turn++
 		if len(g.messages) > maxMessages {
 			g.messages = g.messages[1:]
@@ -292,17 +296,14 @@ func (g *Game) Update() error {
 			}
 		}
 	case StateBattle:
-		if !g.battleEnded {
-			g.handleBattlePhase()
-			if g.battleEnded {
-				if g.player.HP > 0 {
-					g.state = StateEquip
-					g.selectionPhase = 0 // 新しい装備選択のためにフェーズをリセット
-					// 選択をリセット
-					g.selected = [3]int{0, 0, 0}
-				} else {
-					g.state = StateBattleEnd
-				}
+		g.handleBattlePhase()
+		if g.battleEnded && g.currentMessageIndex >= len(g.messages) {
+			if g.reslt {
+				g.state = StateEquip
+				g.selectionPhase = 0         // 新しい装備選択のためにフェーズをリセット
+				g.selected = [3]int{0, 0, 0} // 選択をリセット
+			} else {
+				g.state = StateBattleEnd
 			}
 		}
 	case StateEquip:
@@ -315,6 +316,7 @@ func (g *Game) Update() error {
 			g.lastAttackTime = time.Now() // タイマーをリセット
 			g.turn = 1                    // ターン数をリセット
 			g.messages = nil              // メッセージをリセット
+			g.currentMessageIndex = 0     // メッセージインデックスをリセット
 			g.enemy = Robot{
 				Name: "NewEnemyBot", HP: 100, Attack: 18, Defense: 8, Speed: 4, CriticalRate: 0.05, EvasionRate: 0.05, HitRate: 0.75,
 			}
@@ -382,6 +384,11 @@ func (r *Robot) AttackEnemy(enemy *Robot, rng *rand.Rand) []string {
 	// クリティカルヒットメッセージ
 	if critical > 1.0 {
 		messages = append(messages, criticalMsg)
+	}
+
+	// 敵を倒したメッセージ
+	if enemy.HP <= 0 {
+		messages = append(messages, fmt.Sprintf("%s has defeated %s!", r.Name, enemy.Name))
 	}
 
 	return messages
@@ -519,7 +526,7 @@ func (g *Game) drawBattleScreen(screen *ebiten.Image) {
 	msg := strings.Join(g.messages[:g.currentMessageIndex], "\n")
 	drawText(rightWindow, msg, 10, 10)
 
-	if g.currentMessageIndex >= len(g.messages) {
+	if g.currentMessageIndex >= len(g.messages) && !g.battleEnded {
 		commandMsg := "Commands:\n"
 		for i, cmd := range g.battleCommands {
 			cursor := " "
