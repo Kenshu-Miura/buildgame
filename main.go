@@ -378,7 +378,7 @@ func drawWindows(screen *ebiten.Image, msgWindow, leftWindow, rightWindow *ebite
 
 func (g *Game) drawTitleScreen(screen *ebiten.Image) {
 	msg := "Robot Battle\nPress Z to Start"
-	ebitenutil.DebugPrintAt(screen, msg, screenWidth/2-100, screenHeight/2)
+	drawText(screen, msg, screenWidth/2-100, screenHeight/2)
 }
 
 func (g *Game) drawSelectionScreen(screen *ebiten.Image) {
@@ -459,8 +459,8 @@ func (g *Game) drawBattleEndScreen(screen *ebiten.Image) {
 	if !g.reslt {
 		msg = "You lose!"
 	}
-	ebitenutil.DebugPrintAt(screen, msg, screenWidth/2-100, screenHeight/2-40)
-	ebitenutil.DebugPrintAt(screen, "Press Z to reset the game.", screenWidth/2-100, screenHeight/2)
+	drawText(screen, msg, screenWidth/2-50, screenHeight/2)
+	drawText(screen, "Press Z to restart", screenWidth/2-100, screenHeight/2+30)
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
