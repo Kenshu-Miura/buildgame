@@ -146,21 +146,23 @@ func getEquipmentImageFilename(equipmentType, item string) string {
 }
 
 type Game struct {
-	state          int
-	player         Robot
-	enemy          Robot
-	messages       []string
-	equipment      [][]string
-	selected       [3]int
-	selectionPhase int
-	battleStarted  bool
-	battleEnded    bool
-	lastAttackTime time.Time
-	rng            *rand.Rand
-	turn           int
-	reslt          bool
-	battleCommands []string
-	commandIndex   int
+	state               int
+	player              Robot
+	enemy               Robot
+	messages            []string
+	equipment           [][]string
+	selected            [3]int
+	selectionPhase      int
+	battleStarted       bool
+	battleEnded         bool
+	lastAttackTime      time.Time
+	rng                 *rand.Rand
+	turn                int
+	reslt               bool
+	battleCommands      []string
+	commandIndex        int
+	currentMessageIndex int
+	messageDisplayTime  time.Time
 }
 
 func NewGame() *Game {
@@ -182,14 +184,16 @@ func NewGame() *Game {
 			{"Shield", "Armor", "NanoSuit"},
 			{"Boots", "Helmet", "Gloves"},
 		},
-		selected:       [3]int{0, 0, 0},
-		selectionPhase: 0,
-		battleStarted:  false,
-		battleEnded:    false,
-		rng:            rng,
-		turn:           1,
-		battleCommands: []string{"攻撃", "防御", "回復"},
-		commandIndex:   0,
+		selected:            [3]int{0, 0, 0},
+		selectionPhase:      0,
+		battleStarted:       false,
+		battleEnded:         false,
+		rng:                 rng,
+		turn:                1,
+		battleCommands:      []string{"攻撃", "防御", "回復"},
+		commandIndex:        0,
+		currentMessageIndex: 0,
+		messageDisplayTime:  time.Now(),
 	}
 }
 
@@ -225,6 +229,14 @@ func (g *Game) handleBattlePhase() {
 		return
 	}
 
+	if g.currentMessageIndex < len(g.messages) {
+		if time.Since(g.messageDisplayTime) >= 500*time.Millisecond {
+			g.currentMessageIndex++
+			g.messageDisplayTime = time.Now()
+		}
+		return
+	}
+
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
 		g.commandIndex = (g.commandIndex - 1 + len(g.battleCommands)) % len(g.battleCommands)
 	}
@@ -232,18 +244,22 @@ func (g *Game) handleBattlePhase() {
 		g.commandIndex = (g.commandIndex + 1) % len(g.battleCommands)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
+		g.messages = nil
+		g.currentMessageIndex = 0
+		g.messageDisplayTime = time.Time{} // リセットしてすぐに表示するようにする
 		g.lastAttackTime = time.Now()
+
 		switch g.battleCommands[g.commandIndex] {
 		case "攻撃":
-			g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.AttackEnemy(&g.enemy, g.rng)))
+			g.messages = append(g.messages, g.player.AttackEnemy(&g.enemy, g.rng)...)
 		case "防御":
-			g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.Defend()))
+			g.messages = append(g.messages, g.player.Defend())
 		case "回復":
-			g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.Heal()))
+			g.messages = append(g.messages, g.player.Heal())
 		}
 
 		if g.enemy.HP > 0 {
-			g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.enemy.AttackEnemy(&g.player, g.rng)))
+			g.messages = append(g.messages, g.enemy.AttackEnemy(&g.player, g.rng)...)
 		}
 
 		if g.player.HP <= 0 {
@@ -327,21 +343,27 @@ func (r *Robot) Heal() string {
 	return fmt.Sprintf("%s healed, increasing HP to %d", r.Name, r.HP)
 }
 
-func (r *Robot) AttackEnemy(enemy *Robot, rng *rand.Rand) string {
+func (r *Robot) AttackEnemy(enemy *Robot, rng *rand.Rand) []string {
+	messages := []string{}
+
 	// 命中判定
 	if rng.Float64() > r.HitRate {
-		return fmt.Sprintf("%s attacks %s but misses!", r.Name, enemy.Name)
+		messages = append(messages, fmt.Sprintf("%s attacks %s but misses!", r.Name, enemy.Name))
+		return messages
 	}
 
 	// 回避判定
 	if rng.Float64() < enemy.EvasionRate {
-		return fmt.Sprintf("%s attacks %s but misses!", r.Name, enemy.Name)
+		messages = append(messages, fmt.Sprintf("%s attacks %s but misses!", r.Name, enemy.Name))
+		return messages
 	}
 
 	// クリティカルヒット判定
 	critical := 1.0
+	criticalMsg := ""
 	if rng.Float64() < r.CriticalRate {
 		critical = 2.0
+		criticalMsg = "It's a critical hit!"
 	}
 
 	// ランダムなダメージ修正 (-3 から +3)
@@ -354,13 +376,15 @@ func (r *Robot) AttackEnemy(enemy *Robot, rng *rand.Rand) string {
 	}
 	enemy.HP -= damage
 
-	// クリティカルヒットかどうかのメッセージ
-	criticalMsg := ""
+	// 攻撃メッセージ
+	messages = append(messages, fmt.Sprintf("%s attacks %s for %d damage.", r.Name, enemy.Name, damage))
+
+	// クリティカルヒットメッセージ
 	if critical > 1.0 {
-		criticalMsg = "\nIt's a critical hit!"
+		messages = append(messages, criticalMsg)
 	}
 
-	return fmt.Sprintf("%s attacks %s for %d damage.%s", r.Name, enemy.Name, damage, criticalMsg)
+	return messages
 }
 
 func drawText(msgWindow *ebiten.Image, msg string, x, y float64) {
@@ -491,18 +515,21 @@ func (g *Game) drawBattleScreen(screen *ebiten.Image) {
 	if g.turn == 1 {
 		drawText(rightWindow, "Battle Start!", 10, 10)
 	}
-	msg := strings.Join(g.messages, "\n")
+
+	msg := strings.Join(g.messages[:g.currentMessageIndex], "\n")
 	drawText(rightWindow, msg, 10, 10)
 
-	commandMsg := "Commands:\n"
-	for i, cmd := range g.battleCommands {
-		cursor := " "
-		if i == g.commandIndex {
-			cursor = ">"
+	if g.currentMessageIndex >= len(g.messages) {
+		commandMsg := "Commands:\n"
+		for i, cmd := range g.battleCommands {
+			cursor := " "
+			if i == g.commandIndex {
+				cursor = ">"
+			}
+			commandMsg += fmt.Sprintf("%s %s\n", cursor, cmd)
 		}
-		commandMsg += fmt.Sprintf("%s %s\n", cursor, cmd)
+		drawText(msgWindow, commandMsg, 10, 10)
 	}
-	drawText(msgWindow, commandMsg, 10, 10)
 
 	drawWindows(screen, msgWindow, leftWindow, rightWindow, windowX, windowY, screenWidth)
 }
