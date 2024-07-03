@@ -342,6 +342,40 @@ func drawBattleStatus(g *Game, msgWindow *ebiten.Image, screen *ebiten.Image, st
 	drawText(screen, startMsg, 10, 10)
 }
 
+func createWindow(windowWidth, windowHeight int) *ebiten.Image {
+	window := ebiten.NewImage(windowWidth, windowHeight)
+	window.Fill(color.Black)
+	vector.DrawFilledRect(window, 0, 0, float32(windowWidth), 2, color.White, false)
+	vector.DrawFilledRect(window, 0, float32(windowHeight-2), float32(windowWidth), 2, color.White, false)
+	vector.DrawFilledRect(window, 0, 0, 2, float32(windowHeight), color.White, false)
+	vector.DrawFilledRect(window, float32(windowWidth-2), 0, 2, float32(windowHeight), color.White, false)
+	return window
+}
+
+func createSubWindow(width, height int) *ebiten.Image {
+	subWindow := ebiten.NewImage(width, height)
+	subWindow.Fill(color.RGBA{0, 0, 0, 255})
+	vector.DrawFilledRect(subWindow, 0, 0, float32(width), 2, color.White, false)
+	vector.DrawFilledRect(subWindow, 0, float32(height-2), float32(width), 2, color.White, false)
+	vector.DrawFilledRect(subWindow, 0, 0, 2, float32(height), color.White, false)
+	vector.DrawFilledRect(subWindow, float32(width-2), 0, 2, float32(height), color.White, false)
+	return subWindow
+}
+
+func drawWindows(screen *ebiten.Image, msgWindow, leftWindow, rightWindow *ebiten.Image, windowX, windowY, screenWidth int) {
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(windowX), float64(windowY))
+	screen.DrawImage(msgWindow, op)
+
+	opLeft := &ebiten.DrawImageOptions{}
+	opLeft.GeoM.Translate(10, 10)
+	screen.DrawImage(leftWindow, opLeft)
+
+	opRight := &ebiten.DrawImageOptions{}
+	opRight.GeoM.Translate(float64(screenWidth)/2-180, 10)
+	screen.DrawImage(rightWindow, opRight)
+}
+
 func (g *Game) drawTitleScreen(screen *ebiten.Image) {
 	msg := "Robot Battle\nPress Z to Start"
 	ebitenutil.DebugPrintAt(screen, msg, screenWidth/2-100, screenHeight/2)
@@ -352,30 +386,9 @@ func (g *Game) drawSelectionScreen(screen *ebiten.Image) {
 	windowX, windowY := 10, screenHeight/2+70
 	windowWidth, windowHeight := screenWidth-20, screenHeight/2-80
 
-	msgWindow := ebiten.NewImage(windowWidth, windowHeight-10)
-	msgWindow.Fill(color.Black)
-	vector.DrawFilledRect(msgWindow, 0, 0, float32(windowWidth), 2, color.White, false)
-	vector.DrawFilledRect(msgWindow, 0, float32(windowHeight-12), float32(windowWidth), 2, color.White, false)
-	vector.DrawFilledRect(msgWindow, 0, 0, 2, float32(windowHeight-10), color.White, false)
-	vector.DrawFilledRect(msgWindow, float32(windowWidth-2), 0, 2, float32(windowHeight-10), color.White, false)
-
-	// 追加: 上部に2つのウィンドウを追加
-	leftWindow := ebiten.NewImage(screenWidth/3, screenHeight/2+40)
-	rightWindow := ebiten.NewImage(screenWidth/2+170, screenHeight/2+40)
-	leftWindow.Fill(color.RGBA{0, 0, 0, 255})
-	rightWindow.Fill(color.RGBA{0, 0, 0, 255})
-
-	// 左ウィンドウの枠を描画
-	vector.DrawFilledRect(leftWindow, 0, 0, float32(screenWidth/3), 2, color.White, false)
-	vector.DrawFilledRect(leftWindow, 0, float32(screenHeight/2+40-2), float32(screenWidth/3), 2, color.White, false)
-	vector.DrawFilledRect(leftWindow, 0, 0, 2, float32(screenHeight/2+40), color.White, false)
-	vector.DrawFilledRect(leftWindow, float32(screenWidth/3-2), 0, 2, float32(screenHeight/2+40), color.White, false)
-
-	// 右ウィンドウの枠を描画
-	vector.DrawFilledRect(rightWindow, 0, 0, float32(screenWidth/2+170), 2, color.White, false)
-	vector.DrawFilledRect(rightWindow, 0, float32(screenHeight/2+40-2), float32(screenWidth/2+170), 2, color.White, false)
-	vector.DrawFilledRect(rightWindow, 0, 0, 2, float32(screenHeight/2+40), color.White, false)
-	vector.DrawFilledRect(rightWindow, float32(screenWidth/2+170-2), 0, 2, float32(screenHeight/2+40), color.White, false)
+	msgWindow := createWindow(windowWidth, windowHeight-10)
+	leftWindow := createSubWindow(screenWidth/3, screenHeight/2+40)
+	rightWindow := createSubWindow(screenWidth/2+170, screenHeight/2+40)
 
 	status := fmt.Sprintf(
 		"Current Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d\nCritical Rate: %.2f\nEvasion Rate: %.2f\nHit Rate: %.2f",
@@ -393,13 +406,11 @@ func (g *Game) drawSelectionScreen(screen *ebiten.Image) {
 		}
 		drawText(msgWindow, msg, 10, 10)
 
-		// 右ウィンドウに選択中の装備の詳細を表示
 		equipmentType := []string{"Weapon", "Armor", "Accessory"}[g.selectionPhase]
 		selectedItem := g.equipment[g.selectionPhase][g.selected[g.selectionPhase]]
 		details := getEquipmentDetails(equipmentType, selectedItem)
 		drawText(rightWindow, details, 10, 10)
 
-		// 左ウィンドウに選択中の装備の画像を表示
 		imageFilename := getEquipmentImageFilename(equipmentType, selectedItem)
 		image, _, err := ebitenutil.NewImageFromFile(imageFilename)
 		if err == nil {
@@ -407,7 +418,7 @@ func (g *Game) drawSelectionScreen(screen *ebiten.Image) {
 			scaleX := float64(screenWidth/3-20) / float64(image.Bounds().Dx())
 			scaleY := float64(screenHeight/2+20) / float64(image.Bounds().Dy())
 			op.GeoM.Scale(scaleX, scaleY)
-			op.GeoM.Translate(10, 10) // 枠と画像の間に10ピクセルの隙間を設定
+			op.GeoM.Translate(10, 10)
 			leftWindow.DrawImage(image, op)
 		}
 		drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
@@ -416,17 +427,7 @@ func (g *Game) drawSelectionScreen(screen *ebiten.Image) {
 		drawBattleStatus(g, msgWindow, rightWindow, "Press Z to start the battle!")
 	}
 
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(windowX), float64(windowY))
-	screen.DrawImage(msgWindow, op)
-
-	opLeft := &ebiten.DrawImageOptions{}
-	opLeft.GeoM.Translate(10, 10)
-	screen.DrawImage(leftWindow, opLeft)
-
-	opRight := &ebiten.DrawImageOptions{}
-	opRight.GeoM.Translate(float64(screenWidth)/2-180, 10)
-	screen.DrawImage(rightWindow, opRight)
+	drawWindows(screen, msgWindow, leftWindow, rightWindow, windowX, windowY, screenWidth)
 }
 
 func (g *Game) drawBattleScreen(screen *ebiten.Image) {
@@ -434,30 +435,9 @@ func (g *Game) drawBattleScreen(screen *ebiten.Image) {
 	windowX, windowY := 10, screenHeight/2+70
 	windowWidth, windowHeight := screenWidth-20, screenHeight/2-80
 
-	msgWindow := ebiten.NewImage(windowWidth, windowHeight-10)
-	msgWindow.Fill(color.Black)
-	vector.DrawFilledRect(msgWindow, 0, 0, float32(windowWidth), 2, color.White, false)
-	vector.DrawFilledRect(msgWindow, 0, float32(windowHeight-12), float32(windowWidth), 2, color.White, false)
-	vector.DrawFilledRect(msgWindow, 0, 0, 2, float32(windowHeight-10), color.White, false)
-	vector.DrawFilledRect(msgWindow, float32(windowWidth-2), 0, 2, float32(windowHeight-10), color.White, false)
-
-	// 追加: 上部に2つのウィンドウを追加
-	leftWindow := ebiten.NewImage(screenWidth/3, screenHeight/2+40)
-	rightWindow := ebiten.NewImage(screenWidth/2+170, screenHeight/2+40)
-	leftWindow.Fill(color.RGBA{0, 0, 0, 255})
-	rightWindow.Fill(color.RGBA{0, 0, 0, 255})
-
-	// 左ウィンドウの枠を描画
-	vector.DrawFilledRect(leftWindow, 0, 0, float32(screenWidth/3), 2, color.White, false)
-	vector.DrawFilledRect(leftWindow, 0, float32(screenHeight/2+40-2), float32(screenWidth/3), 2, color.White, false)
-	vector.DrawFilledRect(leftWindow, 0, 0, 2, float32(screenHeight/2+40), color.White, false)
-	vector.DrawFilledRect(leftWindow, float32(screenWidth/3-2), 0, 2, float32(screenHeight/2+40), color.White, false)
-
-	// 右ウィンドウの枠を描画
-	vector.DrawFilledRect(rightWindow, 0, 0, float32(screenWidth/2+170), 2, color.White, false)
-	vector.DrawFilledRect(rightWindow, 0, float32(screenHeight/2+40-2), float32(screenWidth/2+170), 2, color.White, false)
-	vector.DrawFilledRect(rightWindow, 0, 0, 2, float32(screenHeight/2+40), color.White, false)
-	vector.DrawFilledRect(rightWindow, float32(screenWidth/2+170-2), 0, 2, float32(screenHeight/2+40), color.White, false)
+	msgWindow := createWindow(windowWidth, windowHeight-10)
+	leftWindow := createSubWindow(screenWidth/3, screenHeight/2+40)
+	rightWindow := createSubWindow(screenWidth/2+170, screenHeight/2+40)
 
 	status := fmt.Sprintf(
 		"Current Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d\nCritical Rate: %.2f\nEvasion Rate: %.2f\nHit Rate: %.2f",
@@ -471,17 +451,7 @@ func (g *Game) drawBattleScreen(screen *ebiten.Image) {
 	drawText(rightWindow, msg, 10, 10)
 	drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
 
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(windowX), float64(windowY))
-	screen.DrawImage(msgWindow, op)
-
-	opLeft := &ebiten.DrawImageOptions{}
-	opLeft.GeoM.Translate(10, 10)
-	screen.DrawImage(leftWindow, opLeft)
-
-	opRight := &ebiten.DrawImageOptions{}
-	opRight.GeoM.Translate(float64(screenWidth)/2-180, 10)
-	screen.DrawImage(rightWindow, opRight)
+	drawWindows(screen, msgWindow, leftWindow, rightWindow, windowX, windowY, screenWidth)
 }
 
 func (g *Game) drawBattleEndScreen(screen *ebiten.Image) {
