@@ -1,11 +1,12 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
 	"image/color"
 	"log"
 	"math/rand"
-	"os"
 	"strings"
 	"time"
 
@@ -23,18 +24,16 @@ const (
 	lineHeight   = 26 // 行の高さを適切に設定（フォントサイズに応じて調整）
 )
 
+//go:embed KiwiMaru-Regular.ttf
+var fontData []byte
+
 var (
 	fontFace *text.GoTextFace
 )
 
 func init() {
-	f, err := os.Open("KiwiMaru-Regular.ttf")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-
-	src, err := text.NewGoTextFaceSource(f)
+	reader := bytes.NewReader(fontData)
+	src, err := text.NewGoTextFaceSource(reader)
 	if err != nil {
 		log.Fatal(err)
 	}
