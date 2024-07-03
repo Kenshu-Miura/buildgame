@@ -226,7 +226,7 @@ func (g *Game) handleBattleStart() {
 
 func (g *Game) handleBattlePhase() {
 	if g.currentMessageIndex < len(g.messages) {
-		if time.Since(g.messageDisplayTime) >= 500*time.Millisecond {
+		if time.Since(g.messageDisplayTime) >= 750*time.Millisecond {
 			g.currentMessageIndex++
 			g.messageDisplayTime = time.Now()
 		}
