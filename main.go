@@ -159,6 +159,8 @@ type Game struct {
 	rng            *rand.Rand
 	turn           int
 	reslt          bool
+	battleCommands []string
+	commandIndex   int
 }
 
 func NewGame() *Game {
@@ -186,6 +188,8 @@ func NewGame() *Game {
 		battleEnded:    false,
 		rng:            rng,
 		turn:           1,
+		battleCommands: []string{"攻撃", "防御", "回復"},
+		commandIndex:   0,
 	}
 }
 
@@ -217,40 +221,41 @@ func (g *Game) handleBattleStart() {
 }
 
 func (g *Game) handleBattlePhase() {
-	if time.Since(g.lastAttackTime) >= time.Second {
+	if g.battleEnded {
+		return
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+		g.commandIndex = (g.commandIndex - 1 + len(g.battleCommands)) % len(g.battleCommands)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+		g.commandIndex = (g.commandIndex + 1) % len(g.battleCommands)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
 		g.lastAttackTime = time.Now()
-		if g.player.HP > 0 && g.enemy.HP > 0 {
-			if g.player.Speed >= g.enemy.Speed {
-				g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.AttackEnemy(&g.enemy, g.rng)))
-				if len(g.messages) > maxMessages {
-					g.messages = g.messages[1:]
-				}
-				if g.enemy.HP > 0 {
-					g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.enemy.AttackEnemy(&g.player, g.rng)))
-					if len(g.messages) > maxMessages {
-						g.messages = g.messages[1:]
-					}
-				}
-			} else {
-				g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.enemy.AttackEnemy(&g.player, g.rng)))
-				if len(g.messages) > maxMessages {
-					g.messages = g.messages[1:]
-				}
-				if g.player.HP > 0 {
-					g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.AttackEnemy(&g.enemy, g.rng)))
-					if len(g.messages) > maxMessages {
-						g.messages = g.messages[1:]
-					}
-				}
-			}
-			g.turn++
-		} else {
-			if g.player.HP <= 0 {
-				g.reslt = false
-			} else if g.enemy.HP <= 0 {
-				g.reslt = true
-			}
+		switch g.battleCommands[g.commandIndex] {
+		case "攻撃":
+			g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.AttackEnemy(&g.enemy, g.rng)))
+		case "防御":
+			g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.Defend()))
+		case "回復":
+			g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.player.Heal()))
+		}
+
+		if g.enemy.HP > 0 {
+			g.messages = append(g.messages, fmt.Sprintf("Turn %d: %s", g.turn, g.enemy.AttackEnemy(&g.player, g.rng)))
+		}
+
+		if g.player.HP <= 0 {
+			g.reslt = false
 			g.battleEnded = true
+		} else if g.enemy.HP <= 0 {
+			g.reslt = true
+			g.battleEnded = true
+		}
+		g.turn++
+		if len(g.messages) > maxMessages {
+			g.messages = g.messages[1:]
 		}
 	}
 }
@@ -307,6 +312,19 @@ func (g *Game) Update() error {
 		}
 	}
 	return nil
+}
+
+func (r *Robot) Defend() string {
+	r.Defense += 5
+	return fmt.Sprintf("%s defended, increasing Defense to %d", r.Name, r.Defense)
+}
+
+func (r *Robot) Heal() string {
+	r.HP += 10
+	if r.HP > 100 {
+		r.HP = 100
+	}
+	return fmt.Sprintf("%s healed, increasing HP to %d", r.Name, r.HP)
 }
 
 func (r *Robot) AttackEnemy(enemy *Robot, rng *rand.Rand) string {
@@ -468,13 +486,23 @@ func (g *Game) drawBattleScreen(screen *ebiten.Image) {
 		"Current Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d\nCritical Rate: %.2f\nEvasion Rate: %.2f\nHit Rate: %.2f",
 		g.player.HP, g.player.Attack, g.player.Defense, g.player.Speed, g.player.CriticalRate, g.player.EvasionRate, g.player.HitRate,
 	)
+	drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
 
 	if g.turn == 1 {
 		drawText(rightWindow, "Battle Start!", 10, 10)
 	}
 	msg := strings.Join(g.messages, "\n")
 	drawText(rightWindow, msg, 10, 10)
-	drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
+
+	commandMsg := "Commands:\n"
+	for i, cmd := range g.battleCommands {
+		cursor := " "
+		if i == g.commandIndex {
+			cursor = ">"
+		}
+		commandMsg += fmt.Sprintf("%s %s\n", cursor, cmd)
+	}
+	drawText(msgWindow, commandMsg, 10, 10)
 
 	drawWindows(screen, msgWindow, leftWindow, rightWindow, windowX, windowY, screenWidth)
 }
