@@ -28,6 +28,7 @@ const (
 	StateTitle = iota
 	StateSelection
 	StateBattle
+	StateEquip
 	StateBattleEnd
 )
 
@@ -273,8 +274,30 @@ func (g *Game) Update() error {
 		if !g.battleEnded {
 			g.handleBattlePhase()
 			if g.battleEnded {
-				g.state = StateBattleEnd
+				if g.player.HP > 0 {
+					g.state = StateEquip
+					g.selectionPhase = 0 // 新しい装備選択のためにフェーズをリセット
+				} else {
+					g.state = StateBattleEnd
+				}
 			}
+		}
+	case StateEquip:
+		if g.selectionPhase < 1 {
+			g.handleSelectionPhase()
+		} else if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
+			g.state = StateBattle
+			g.battleEnded = false
+			g.battleStarted = false
+			g.lastAttackTime = time.Now() // タイマーをリセット
+			g.turn = 1                    // ターン数をリセット
+			g.messages = nil              // メッセージをリセット
+			g.enemy = Robot{
+				Name: "NewEnemyBot", HP: 100, Attack: 18, Defense: 8, Speed: 4, CriticalRate: 0.05, EvasionRate: 0.05, HitRate: 0.75,
+			}
+			g.enemy.EquipWeapon("Gun")
+			g.enemy.EquipArmor("Armor")
+			g.enemy.EquipAccessory("Helmet")
 		}
 	case StateBattleEnd:
 		if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
@@ -463,6 +486,55 @@ func (g *Game) drawBattleEndScreen(screen *ebiten.Image) {
 	drawText(screen, "Press Z to restart", screenWidth/2-100, screenHeight/2+30)
 }
 
+func (g *Game) drawEquipScreen(screen *ebiten.Image) {
+	screenWidth, screenHeight := screen.Bounds().Dx(), screen.Bounds().Dy()
+	windowX, windowY := 10, screenHeight/2+70
+	windowWidth, windowHeight := screenWidth-20, screenHeight/2-80
+
+	msgWindow := createWindow(windowWidth, windowHeight-10)
+	leftWindow := createSubWindow(screenWidth/3, screenHeight/2+40)
+	rightWindow := createSubWindow(screenWidth/2+170, screenHeight/2+40)
+
+	status := fmt.Sprintf(
+		"Current Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d\nCritical Rate: %.2f\nEvasion Rate: %.2f\nHit Rate: %.2f",
+		g.player.HP, g.player.Attack, g.player.Defense, g.player.Speed, g.player.CriticalRate, g.player.EvasionRate, g.player.HitRate,
+	)
+
+	if g.selectionPhase < 1 {
+		msg := fmt.Sprintf("Select %s:\n", []string{"Weapon", "Armor", "Accessory"}[g.selectionPhase])
+		for i, item := range g.equipment[g.selectionPhase] {
+			cursor := " "
+			if i == g.selected[g.selectionPhase] {
+				cursor = ">"
+			}
+			msg += fmt.Sprintf("%s %s\n", cursor, item)
+		}
+		drawText(msgWindow, msg, 10, 10)
+
+		equipmentType := []string{"Weapon", "Armor", "Accessory"}[g.selectionPhase]
+		selectedItem := g.equipment[g.selectionPhase][g.selected[g.selectionPhase]]
+		details := getEquipmentDetails(equipmentType, selectedItem)
+		drawText(rightWindow, details, 10, 10)
+
+		imageFilename := getEquipmentImageFilename(equipmentType, selectedItem)
+		image, _, err := ebitenutil.NewImageFromFile(imageFilename)
+		if err == nil {
+			op := &ebiten.DrawImageOptions{}
+			scaleX := float64(screenWidth/3-20) / float64(image.Bounds().Dx())
+			scaleY := float64(screenHeight/2+20) / float64(image.Bounds().Dy())
+			op.GeoM.Scale(scaleX, scaleY)
+			op.GeoM.Translate(10, 10)
+			leftWindow.DrawImage(image, op)
+		}
+		drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
+	} else {
+		drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
+		drawBattleStatus(g, msgWindow, rightWindow, "Press Z to start the battle!")
+	}
+
+	drawWindows(screen, msgWindow, leftWindow, rightWindow, windowX, windowY, screenWidth)
+}
+
 func (g *Game) Draw(screen *ebiten.Image) {
 	switch g.state {
 	case StateTitle:
@@ -471,6 +543,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawSelectionScreen(screen)
 	case StateBattle:
 		g.drawBattleScreen(screen)
+	case StateEquip:
+		g.drawEquipScreen(screen)
 	case StateBattleEnd:
 		g.drawBattleEndScreen(screen)
 	}
