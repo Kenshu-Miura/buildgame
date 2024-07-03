@@ -277,6 +277,8 @@ func (g *Game) Update() error {
 				if g.player.HP > 0 {
 					g.state = StateEquip
 					g.selectionPhase = 0 // 新しい装備選択のためにフェーズをリセット
+					// 選択をリセット
+					g.selected = [3]int{0, 0, 0}
 				} else {
 					g.state = StateBattleEnd
 				}
