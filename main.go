@@ -24,6 +24,13 @@ const (
 	lineHeight   = 26 // 行の高さを適切に設定（フォントサイズに応じて調整）
 )
 
+const (
+	StateTitle = iota
+	StateSelection
+	StateBattle
+	StateBattleEnd
+)
+
 //go:embed KiwiMaru-Regular.ttf
 var fontData []byte
 
@@ -138,6 +145,7 @@ func getEquipmentImageFilename(equipmentType, item string) string {
 }
 
 type Game struct {
+	state          int
 	player         Robot
 	enemy          Robot
 	messages       []string
@@ -163,6 +171,7 @@ func NewGame() *Game {
 	enemy.EquipAccessory("Helmet")
 
 	return &Game{
+		state:  StateTitle,
 		player: player,
 		enemy:  enemy,
 		equipment: [][]string{
@@ -246,14 +255,31 @@ func (g *Game) handleBattlePhase() {
 }
 
 func (g *Game) Update() error {
-	if !g.battleStarted {
+	switch g.state {
+	case StateTitle:
+		if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
+			g.state = StateSelection
+		}
+	case StateSelection:
 		if g.selectionPhase < 3 {
 			g.handleSelectionPhase()
 		} else {
 			g.handleBattleStart()
+			if g.battleStarted {
+				g.state = StateBattle
+			}
 		}
-	} else if !g.battleEnded {
-		g.handleBattlePhase()
+	case StateBattle:
+		if !g.battleEnded {
+			g.handleBattlePhase()
+			if g.battleEnded {
+				g.state = StateBattleEnd
+			}
+		}
+	case StateBattleEnd:
+		if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
+			*g = *NewGame()
+		}
 	}
 	return nil
 }
@@ -316,7 +342,12 @@ func drawBattleStatus(g *Game, msgWindow *ebiten.Image, screen *ebiten.Image, st
 	drawText(screen, startMsg, 10, 10)
 }
 
-func (g *Game) Draw(screen *ebiten.Image) {
+func (g *Game) drawTitleScreen(screen *ebiten.Image) {
+	msg := "Robot Battle\nPress Z to Start"
+	ebitenutil.DebugPrintAt(screen, msg, screenWidth/2-100, screenHeight/2)
+}
+
+func (g *Game) drawSelectionScreen(screen *ebiten.Image) {
 	screenWidth, screenHeight := screen.Bounds().Dx(), screen.Bounds().Dy()
 	windowX, windowY := 10, screenHeight/2+70
 	windowWidth, windowHeight := screenWidth-20, screenHeight/2-80
@@ -351,60 +382,38 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.player.HP, g.player.Attack, g.player.Defense, g.player.Speed, g.player.CriticalRate, g.player.EvasionRate, g.player.HitRate,
 	)
 
-	if !g.battleStarted {
-		if g.selectionPhase < 3 {
-			msg := fmt.Sprintf("Select %s:\n", []string{"Weapon", "Armor", "Accessory"}[g.selectionPhase])
-			for i, item := range g.equipment[g.selectionPhase] {
-				cursor := " "
-				if i == g.selected[g.selectionPhase] {
-					cursor = ">"
-				}
-				msg += fmt.Sprintf("%s %s\n", cursor, item)
+	if g.selectionPhase < 3 {
+		msg := fmt.Sprintf("Select %s:\n", []string{"Weapon", "Armor", "Accessory"}[g.selectionPhase])
+		for i, item := range g.equipment[g.selectionPhase] {
+			cursor := " "
+			if i == g.selected[g.selectionPhase] {
+				cursor = ">"
 			}
-			drawText(msgWindow, msg, 10, 10)
-
-			// 右ウィンドウに選択中の装備の詳細を表示
-			equipmentType := []string{"Weapon", "Armor", "Accessory"}[g.selectionPhase]
-			selectedItem := g.equipment[g.selectionPhase][g.selected[g.selectionPhase]]
-			details := getEquipmentDetails(equipmentType, selectedItem)
-			drawText(rightWindow, details, 10, 10)
-
-			// 左ウィンドウに選択中の装備の画像を表示
-			imageFilename := getEquipmentImageFilename(equipmentType, selectedItem)
-			image, _, err := ebitenutil.NewImageFromFile(imageFilename)
-			if err == nil {
-				op := &ebiten.DrawImageOptions{}
-				scaleX := float64(screenWidth/3-20) / float64(image.Bounds().Dx())
-				scaleY := float64(screenHeight/2+20) / float64(image.Bounds().Dy())
-				op.GeoM.Scale(scaleX, scaleY)
-				op.GeoM.Translate(10, 10) // 枠と画像の間に10ピクセルの隙間を設定
-				leftWindow.DrawImage(image, op)
-			}
-			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
-		} else {
-			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
-			drawBattleStatus(g, msgWindow, rightWindow, "Press Z to start the battle!")
+			msg += fmt.Sprintf("%s %s\n", cursor, item)
 		}
+		drawText(msgWindow, msg, 10, 10)
+
+		// 右ウィンドウに選択中の装備の詳細を表示
+		equipmentType := []string{"Weapon", "Armor", "Accessory"}[g.selectionPhase]
+		selectedItem := g.equipment[g.selectionPhase][g.selected[g.selectionPhase]]
+		details := getEquipmentDetails(equipmentType, selectedItem)
+		drawText(rightWindow, details, 10, 10)
+
+		// 左ウィンドウに選択中の装備の画像を表示
+		imageFilename := getEquipmentImageFilename(equipmentType, selectedItem)
+		image, _, err := ebitenutil.NewImageFromFile(imageFilename)
+		if err == nil {
+			op := &ebiten.DrawImageOptions{}
+			scaleX := float64(screenWidth/3-20) / float64(image.Bounds().Dx())
+			scaleY := float64(screenHeight/2+20) / float64(image.Bounds().Dy())
+			op.GeoM.Scale(scaleX, scaleY)
+			op.GeoM.Translate(10, 10) // 枠と画像の間に10ピクセルの隙間を設定
+			leftWindow.DrawImage(image, op)
+		}
+		drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
 	} else {
-		if g.battleEnded {
-			rightMsg := "You win!"
-			if !g.reslt {
-				rightMsg = "You lose!"
-			}
-			drawText(rightWindow, rightMsg, 10, 10)
-			drawText(msgWindow, "Press Z to reset the game.", 10, 10)
-			// Z キーでゲームをリセット
-			if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
-				*g = *NewGame()
-			}
-		} else {
-			if g.turn == 1 {
-				drawText(rightWindow, "Battle Start!", 10, 10)
-			}
-			msg := strings.Join(g.messages, "\n")
-			drawText(rightWindow, msg, 10, 10)
-			drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
-		}
+		drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
+		drawBattleStatus(g, msgWindow, rightWindow, "Press Z to start the battle!")
 	}
 
 	op := &ebiten.DrawImageOptions{}
@@ -418,6 +427,83 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	opRight := &ebiten.DrawImageOptions{}
 	opRight.GeoM.Translate(float64(screenWidth)/2-180, 10)
 	screen.DrawImage(rightWindow, opRight)
+}
+
+func (g *Game) drawBattleScreen(screen *ebiten.Image) {
+	screenWidth, screenHeight := screen.Bounds().Dx(), screen.Bounds().Dy()
+	windowX, windowY := 10, screenHeight/2+70
+	windowWidth, windowHeight := screenWidth-20, screenHeight/2-80
+
+	msgWindow := ebiten.NewImage(windowWidth, windowHeight-10)
+	msgWindow.Fill(color.Black)
+	vector.DrawFilledRect(msgWindow, 0, 0, float32(windowWidth), 2, color.White, false)
+	vector.DrawFilledRect(msgWindow, 0, float32(windowHeight-12), float32(windowWidth), 2, color.White, false)
+	vector.DrawFilledRect(msgWindow, 0, 0, 2, float32(windowHeight-10), color.White, false)
+	vector.DrawFilledRect(msgWindow, float32(windowWidth-2), 0, 2, float32(windowHeight-10), color.White, false)
+
+	// 追加: 上部に2つのウィンドウを追加
+	leftWindow := ebiten.NewImage(screenWidth/3, screenHeight/2+40)
+	rightWindow := ebiten.NewImage(screenWidth/2+170, screenHeight/2+40)
+	leftWindow.Fill(color.RGBA{0, 0, 0, 255})
+	rightWindow.Fill(color.RGBA{0, 0, 0, 255})
+
+	// 左ウィンドウの枠を描画
+	vector.DrawFilledRect(leftWindow, 0, 0, float32(screenWidth/3), 2, color.White, false)
+	vector.DrawFilledRect(leftWindow, 0, float32(screenHeight/2+40-2), float32(screenWidth/3), 2, color.White, false)
+	vector.DrawFilledRect(leftWindow, 0, 0, 2, float32(screenHeight/2+40), color.White, false)
+	vector.DrawFilledRect(leftWindow, float32(screenWidth/3-2), 0, 2, float32(screenHeight/2+40), color.White, false)
+
+	// 右ウィンドウの枠を描画
+	vector.DrawFilledRect(rightWindow, 0, 0, float32(screenWidth/2+170), 2, color.White, false)
+	vector.DrawFilledRect(rightWindow, 0, float32(screenHeight/2+40-2), float32(screenWidth/2+170), 2, color.White, false)
+	vector.DrawFilledRect(rightWindow, 0, 0, 2, float32(screenHeight/2+40), color.White, false)
+	vector.DrawFilledRect(rightWindow, float32(screenWidth/2+170-2), 0, 2, float32(screenHeight/2+40), color.White, false)
+
+	status := fmt.Sprintf(
+		"Current Status:\nHP: %d\nAttack: %d\nDefense: %d\nSpeed: %d\nCritical Rate: %.2f\nEvasion Rate: %.2f\nHit Rate: %.2f",
+		g.player.HP, g.player.Attack, g.player.Defense, g.player.Speed, g.player.CriticalRate, g.player.EvasionRate, g.player.HitRate,
+	)
+
+	if g.turn == 1 {
+		drawText(rightWindow, "Battle Start!", 10, 10)
+	}
+	msg := strings.Join(g.messages, "\n")
+	drawText(rightWindow, msg, 10, 10)
+	drawText(msgWindow, status, float64(windowWidth/2)+10, 10)
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(windowX), float64(windowY))
+	screen.DrawImage(msgWindow, op)
+
+	opLeft := &ebiten.DrawImageOptions{}
+	opLeft.GeoM.Translate(10, 10)
+	screen.DrawImage(leftWindow, opLeft)
+
+	opRight := &ebiten.DrawImageOptions{}
+	opRight.GeoM.Translate(float64(screenWidth)/2-180, 10)
+	screen.DrawImage(rightWindow, opRight)
+}
+
+func (g *Game) drawBattleEndScreen(screen *ebiten.Image) {
+	msg := "You win!"
+	if !g.reslt {
+		msg = "You lose!"
+	}
+	ebitenutil.DebugPrintAt(screen, msg, screenWidth/2-100, screenHeight/2-40)
+	ebitenutil.DebugPrintAt(screen, "Press Z to reset the game.", screenWidth/2-100, screenHeight/2)
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+	switch g.state {
+	case StateTitle:
+		g.drawTitleScreen(screen)
+	case StateSelection:
+		g.drawSelectionScreen(screen)
+	case StateBattle:
+		g.drawBattleScreen(screen)
+	case StateBattleEnd:
+		g.drawBattleEndScreen(screen)
+	}
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
